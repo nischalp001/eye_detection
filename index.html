@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Detection with Boxes</title>
+  <style>
+    /* Video and canvas stacked exactly */
+    #video, #videoCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 640px;
+      height: 480px;
+    }
+
+    #videoCanvas {
+      pointer-events: none; /* Allow clicks to pass through canvas */
+      z-index: 2;
+    }
+
+    #video {
+      z-index: 1;
+    }
+
+    #responseBox {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 3;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 5px 10px;
+      font-family: sans-serif;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay muted></video>
+  <canvas id="videoCanvas" width="640" height="480"></canvas>
+  <div id="responseBox">Detecting...</div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('videoCanvas');
+    const ctx = canvas.getContext('2d');
+    const responseBox = document.getElementById('responseBox');
+
+    // Start webcam stream
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        responseBox.textContent = "Camera error: " + err;
+      });
+
+    // Main loop: send frame and draw bounding boxes
+    setInterval(() => {
+      // Clear previous drawings on canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Capture current frame from video
+      // Use an offscreen canvas to capture a frame because video element can't directly convert to Blob
+      const offscreen = document.createElement('canvas');
+      offscreen.width = canvas.width;
+      offscreen.height = canvas.height;
+      const offCtx = offscreen.getContext('2d');
+      offCtx.drawImage(video, 0, 0, offscreen.width, offscreen.height);
+
+      offscreen.toBlob(blob => {
+        if (!blob) {
+          responseBox.textContent = "Error capturing frame.";
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', blob, 'frame.jpg');
+
+        fetch('http://127.0.0.1:8000/detect_eye_pair/', {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.message === "Closest eye pair detected" && Array.isArray(data.pair)) {
+            responseBox.textContent = `Detected closest eye pair (${data.pair.length} eyes)`;
+
+            // Draw bounding boxes on canvas
+            data.pair.forEach(eye => {
+              ctx.strokeStyle = 'lime';
+              ctx.lineWidth = 3;
+              ctx.strokeRect(eye.x, eye.y, eye.width, eye.height);
+
+              ctx.fillStyle = 'lime';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('Eye', eye.x, eye.y > 20 ? eye.y - 5 : eye.y + 15);
+            });
+          } else {
+            responseBox.textContent = "No eye pair detected.";
+          }
+        })
+        .catch(err => {
+          responseBox.textContent = "Error: " + err;
+        });
+      }, 'image/jpeg');
+    }, 100); // every 100ms = 10 FPS
+  </script>
+</body>
+</html>
