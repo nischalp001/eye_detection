@@ -6,6 +6,11 @@ import numpy as np
 
 app = FastAPI()
 
+origins = [
+    "http://127.0.0.1:5500",      # your local frontend
+    "https://eye-detection-dlde.onrender.com",  # your backend (optional here)
+    # add other frontend URLs if needed
+]
 
 app.add_middleware(
     CORSMiddleware,
